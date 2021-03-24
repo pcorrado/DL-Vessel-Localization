@@ -2,13 +2,13 @@ import sys
 import os
 import numpy as np
 import scipy
+import cv2
 from common.utils import readPlaneLocations, readCase
 import matplotlib.pyplot as plt
 sys.path.append('/export/home/pcorrado/.local/bin')
 import streamlit as st
 import OneShotCNN.Model as oneShotModel
 import OneShotCNN.DataGenerator as generator
-import cv2
 import tensorflow as tf
 import requests
 import tarfile

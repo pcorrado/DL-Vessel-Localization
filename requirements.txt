@@ -6,6 +6,4 @@ scikit_image>=0.16.2
 streamlit>=0.79.0
 matplotlib>=3.3.1
 requests>=2.24.0
-scipy>=1.5.2
 scikit_learn>=0.24.1
-training>=0.0.1

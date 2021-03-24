@@ -1,9 +1,8 @@
+opencv_python--headless
 tensorflow
 six
-opencv_python
 numpy
 scipy
 scikit_image
-streamlit
 matplotlib
 requests

@@ -14,15 +14,15 @@ import time
 """A class for plane localizion using a 3D ResNet.
 Based on Jihong Ju's implementation (See https://github.com/JihongJu/keras-resnet3d.)   """
 class MyModel():
-    def __init__(self, log_dir="logs/log_oneShot", input_shape=(32,32,32,5), num_outputs=(8,8), reg_factor=1e-6):
-        self.model = MyModel.build(input_shape, num_outputs, basic_block, [4,4,4,0], reg_factor=reg_factor)
+    def __init__(self, log_dir="logs/log_oneShot", input_shape=(32,32,32,5), num_outputs=(8,8), reg_factor=1e-5):
+        self.model = MyModel.build(input_shape, num_outputs, basic_block, [2,2,2,1,1], reg_factor=reg_factor)
         self.log_dir=log_dir
 
-    def compile(self, optimizer=tf.keras.optimizers.Adam(3e-4), loss=None):
-        self.model.compile(optimizer=optimizer, loss=loss) #metrics=[ppv, npv, dist, side, angle]
+    def compile(self, optimizer=tf.keras.optimizers.Adam(1e-3), loss=None):
+        self.model.compile(optimizer=optimizer, loss=loss, metrics=[ppv, npv, dist, side, angle])
 
-    def fit(self, x, validation_data, epochs=30, callbacks=None):
-        self.model.fit(x=x, validation_data=validation_data, epochs=epochs, callbacks=callbacks) #tf.keras.callbacks.TensorBoard(log_dir=self.log_dir)
+    def fit(self, x, epochs=100, callbacks=None):
+        self.model.fit(x=x, epochs=epochs, callbacks=callbacks) #tf.keras.callbacks.TensorBoard(log_dir=self.log_dir)
 
     def summary(self,line_length=120):
         self.model.summary(line_length=line_length)
@@ -32,7 +32,7 @@ class MyModel():
 
     def load_model(self, saveFile):
         # self.model.load_weights(saveFile)
-        self.model = tf.keras.models.load_model(saveFile, compile=False)
+        self.model = tf.keras.models.load_model(saveFile, custom_objects={'ppv':ppv, 'npv': npv, 'dist': dist, 'side': side, 'angle': angle, 'myLossFunction': myLossFunction})
 
 
     @staticmethod
@@ -90,7 +90,7 @@ class MyModel():
                                             block.shape[3]),
                                  strides=(1, 1, 1))(block_output)
         flatten1 = Flatten()(pool2)
-        dense = flatten1
+        dense = Dropout(0.5)(flatten1)
         numFCLayers=3
         for dNum in range(numFCLayers):
             dense = Dense(units=num_outputs*2**(numFCLayers-dNum-1),
@@ -247,10 +247,10 @@ class MyCallBack(tf.keras.callbacks.Callback):
         tf.keras.backend.set_value(self.model.optimizer.lr, lr*0.94)
         print("\nEpoch %05d: Learning rate was %6.4f, now it's %6.4f." % (epoch, lr, lr*0.94))
 
-        maxLocPredicted, maxLocTrue = MyModel.predictFullImages(self.model, self.validation_data)
-        dist, side, angle = MyModel.comparePlaneLocations(maxLocPredicted, maxLocTrue)
-        for vessel in range(dist.shape[0]):
-            print('Vessel #{}: distance={}, side={}, angle={}\n'.format(vessel,np.mean(dist[vessel,:]),np.mean(side[vessel,:]),np.mean(angle[vessel,:])))
+        # maxLocPredicted, maxLocTrue = MyModel.predictFullImages(self.model, self.validation_data)
+        # dist, side, angle = MyModel.comparePlaneLocations(maxLocPredicted, maxLocTrue)
+        # for vessel in range(dist.shape[0]):
+        #     print('Vessel #{}: distance={}, side={}, angle={}\n'.format(vessel,np.mean(dist[vessel,:]),np.mean(side[vessel,:]),np.mean(angle[vessel,:])))
 
 def _bn_relu(input):
     """Helper to build a BN -> relu block."""
@@ -378,10 +378,10 @@ def myLossFunction(y_true, y_pred):
             y_true[:,:,0]*(y_true[:,:,2] - y_pred[:,:,2])**2 + \
             y_true[:,:,0]*(y_true[:,:,3] - y_pred[:,:,3])**2 + \
        0.5*(y_true[:,:,0]*(y_true[:,:,4] - y_pred[:,:,4])**2) + \
-            y_true[:,:,0]*(y_true[:,:,5] - y_pred[:,:,5])**2 + \
-            y_true[:,:,0]*(y_true[:,:,6] - y_pred[:,:,6])**2 + \
-            y_true[:,:,0]*(y_true[:,:,7] - y_pred[:,:,7])**2 + \
-       3.0*(y_true[:,:,0]+0.1)*(y_true[:,:,0] - y_pred[:,:,0])**2
+       0.5*(y_true[:,:,0]*(y_true[:,:,5] - y_pred[:,:,5])**2) + \
+       0.5*(y_true[:,:,0]*(y_true[:,:,6] - y_pred[:,:,6])**2) + \
+       0.5*(y_true[:,:,0]*(y_true[:,:,7] - y_pred[:,:,7])**2) + \
+       2.5*(y_true[:,:,0]+0.1)*(y_true[:,:,0] - y_pred[:,:,0])**2
 
     return tf.reduce_mean(loss)
 

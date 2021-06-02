@@ -60,7 +60,6 @@ class DataGenerator(BaseDataGenerator):
         self.xInd,self.yInd,self.zInd = np.meshgrid(range(int((self.imageDims[0]-self.dim[0])/self.stride[0]+1)),
                                                     range(int((self.imageDims[1]-self.dim[1])/self.stride[1]+1)),
                                                     range(int((self.imageDims[2]-self.dim[2])/self.stride[2]+1)))
-
         self.images = np.zeros((len(self.list_IDs),imageDims[0],imageDims[1],imageDims[2],5), dtype=np.int16)
 
         if images is None:

@@ -11,43 +11,35 @@ import OneShotCNN.Model as oneShotModel
 import ReinforcementCNN.Model as reinforcementModel
 import OneShotCNN.DataGenerator as oneShotGenerator
 import ReinforcementCNN.DataGenerator as reinforcementGenerator
-import argparse
 
-""" testNetwork - test one of the CNN's for Deep Learning Based 4D Flow Plane Placement
+""" testNetwork - test the CNN for Deep Learning Based 4D Flow Plane Placement
         usage:
-            python testNetwork      (Tests One-Shot ResNet)
-            python testNetwork --reinforcement      (Tests Reinforcement Learning Network)
+            python testNetwork      (Tests ResNet)
 """
 if __name__ == '__main__':
-    # Parse command line input
-    parser = argparse.ArgumentParser(description='Test DL Plane Placement Network.')
 
-    parser.add_argument('--reinforcement', dest='model', action='store_const',
-                       const=reinforcementModel, default=oneShotModel,
-                       help='Use reinforcement learning network (default: Use one-shot network)')
-    args = parser.parse_args()
+    modelName = "TrainedModel/ResNet_32_stride_16_62mil_batch_64"
+    outputFile = "TestResults/OneShot_Predictions.csv"
 
-    # Choose appropriate model and generator
-    model = args.model
-    generator = oneShotGenerator if model==oneShotModel else reinforcementGenerator
-    modelName = "TrainedModel/OneShot_batch_64" if model==oneShotModel else "TrainedModel/Reinforcement"
-    outputFile = "TestResults/OneShot_Predictions.csv" if model==oneShotModel else "TestResults/Reinforcement_Predictions.csv"
-    myModel = model.MyModel()
+    # Load model
+    myModel = oneShotModel.MyModel()
     myModel.load_model(modelName)
 
-    # Read in image paths and plane locations
-    cutPlaneFileName = './data/testCutPlaneList.csv'
+    # Read in test image paths and plane locations
+    cutPlaneFileName = './data/O1CutPlaneList.csv'
     (images,labels) = readPlaneLocations(cutPlaneFileName)
     images = np.array(images)
 
-    # Generator
-    test_generator = generator.DataGenerator(images, labels, shuffle=False)
+    # Data generator
+    test_generator = oneShotGenerator.DataGenerator(images, labels, shuffle=False)
 
-    predictedLocations, trueLocations = model.MyModel.predictFullImages(myModel.model, test_generator)
-    dist, side, angle = model.MyModel.comparePlaneLocations(predictedLocations, trueLocations)
+    # Run predictions on test images
+    predictedLocations, trueLocations = oneShotModel.MyModel.predictFullImages(myModel.model, test_generator)
+    dist, side, angle = oneShotModel.MyModel.comparePlaneLocations(predictedLocations, trueLocations)
     for vessel in range(dist.shape[0]):
         print('Vessel #{}: distance={}, side={}, angle={}\n'.format(vessel,np.mean(dist[vessel,:]),np.mean(side[vessel,:]),np.mean(angle[vessel,:])))
 
+    # Write out plane locations to csv file
     with open(outputFile, mode='w') as csvFile:
         writer = csv.writer(csvFile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(['Path', 'Vessel', 'Center_X', 'Center_Y', 'Center_Z', 'Normal_X', 'Normal_Y', 'Normal_Z'])

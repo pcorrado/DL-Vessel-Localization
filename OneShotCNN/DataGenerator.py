@@ -44,7 +44,7 @@ class DataGenerator(BaseDataGenerator):
             Outputs:
                 DataGenerator object"""
     def __init__(self, list_IDs, labels, images=None, imageDims=(128,128,128), batch_size=64, dim=(32,32,32,5), label_dim=(8,8), shuffle=False, \
-                 shiftPixels=0, rotateDegrees=(0,0,0), scaleFraction=0.0, intensityMultiplier=0.0, noiseFactor=0.0, stride=(16,16,16)):
+                 shiftPixels=0, rotateDegrees=(0,0,0), scaleFraction=0.0, intensityMultiplier=0.0, noiseFactor=0.0, stride=(16,16,16), balanced=False):
         # Initialization
         vars = locals()
         for name in vars:
@@ -52,8 +52,8 @@ class DataGenerator(BaseDataGenerator):
                 setattr(self, name, vars[name])
 
         self.patches_per_image = np.floor((self.imageDims[0]-self.dim[0])/self.stride[0]+1) * \
-                                 np.floor((self.imageDims[1]-self.dim[1])/self.stride[1]+1) * \
-                                 np.floor((self.imageDims[2]-self.dim[2])/self.stride[2]+1)
+                                     np.floor((self.imageDims[1]-self.dim[1])/self.stride[1]+1) * \
+                                     np.floor((self.imageDims[2]-self.dim[2])/self.stride[2]+1)
 
 
         # x, y, z, indexes into image to define patch locations from 0-(Npx-1), 0-(Npy-1), 0-(Npz-1) where Npx x Npy x Npz = patches_per_image
@@ -77,9 +77,13 @@ class DataGenerator(BaseDataGenerator):
         self.subIndices = np.arange(self.patches_per_image, dtype=np.int16)
         self.on_epoch_end()
 
+
     '__len__(dataGenerator) Denotes the number of batches per epoch'
     def __len__(self):
-        return int(np.floor(len(self.list_IDs) * self.patches_per_image / self.batch_size))
+        if self.balanced:
+            return int(np.floor(len(self.list_IDs)))
+        else:
+            return int(np.floor(len(self.list_IDs) * self.patches_per_image / self.batch_size))
 
     """ getImgNameXYZ
         Converts from within-patch x,y,z coordinates to within-image x,y,z coordinates.
@@ -97,12 +101,16 @@ class DataGenerator(BaseDataGenerator):
             y2 - y-position of plane center in image coordinate system (0 to Ny-1)
             z2 - z-position of plane center in image coordinate system (0 to Nz-1)"""
     def getImgNameXYZ(self, batch_index, patch_index,x,y,z):
-        index = self.indexes[int(np.floor((batch_index*self.batch_size+patch_index)/self.patches_per_image))]
-        name = self.list_IDs[index]
+        if self.balanced:
+            name = self.list_IDs[batch_index]
+            subIndex = self.subIndices[self.subSubIndices[patch_index]]
+        else:
+            index = self.indexes[int(np.floor((batch_index*self.batch_size+patch_index)/self.patches_per_image))]
+            name = self.list_IDs[index]
 
-        # Find index within patch based on patch_index and batch index
-        leftover = batch_index*self.batch_size - np.floor(batch_index*self.batch_size/self.patches_per_image)*self.patches_per_image
-        subIndex = self.subIndices[int((patch_index + leftover)%self.patches_per_image)]
+            # Find index within patch based on patch_index and batch index
+            leftover = batch_index*self.batch_size - np.floor(batch_index*self.batch_size/self.patches_per_image)*self.patches_per_image
+            subIndex = self.subIndices[int((patch_index + leftover)%self.patches_per_image)]
 
         # Find x,y,z of patch upper left corner
         x1 = self.xInd.ravel()[subIndex]*self.stride[0]
@@ -123,23 +131,38 @@ class DataGenerator(BaseDataGenerator):
             X - batch_size x Nx x Ny x Nz x Nc array of image patches
             y - batch_size x Nvesssel x 8 array of plane location information """
     def __getitem__(self, batch_index):
-        # Generate indexes of the batch
-        i1 = int(np.floor(batch_index*self.batch_size/self.patches_per_image))  # index of image 1
-        i2 = int(np.floor((batch_index+1)*self.batch_size/self.patches_per_image)) # index of image Nimg+1
-        indexes = self.indexes[i1:(i2+1)] # indexes of image 1 through image Nimg - note, this does not have to have length of batch_size
 
-        list_IDs_temp = [self.list_IDs[k] for k in indexes] # list of image paths
-        subIndices = {} #
-        counter=0
-        for k in indexes:
-            img_index = i1+counter
-            si1 = max(0,batch_index*self.batch_size-img_index*self.patches_per_image)
-            si2 = min(self.patches_per_image,(batch_index+1)*self.batch_size-img_index*self.patches_per_image)
-            subIndices[self.list_IDs[k]] = self.subIndices[np.arange(si1,si2,dtype=np.int16)]
-            counter+=1
+        if self.balanced:
+            subIndices = {self.list_IDs[batch_index]:  self.subIndices}
+            X, y = self.__data_generation([self.list_IDs[batch_index]], subIndices, [batch_index])
+            (patchHit,_) = np.where(y[:,:,0]>0)
+            patchHit = np.unique(patchHit)
+            patchMiss = np.setdiff1d(np.arange(self.patches_per_image), patchHit)
+            if len(patchHit)>(self.batch_size/2):
+                patchHit = patchHit[0:int(self.batch_size/2)]
+            self.subSubIndices = np.append(patchHit,patchMiss[0:(self.batch_size-len(patchHit))]).astype(int).tolist()
+            X = X[self.subSubIndices,:,:,:,:]
+            y = y[self.subSubIndices,:,:]
+        else:
+            # Generate indexes of the batch
+            i1 = int(np.floor(batch_index*self.batch_size/self.patches_per_image))  # index of image 1
+            i2 = int(np.floor((batch_index+1)*self.batch_size/self.patches_per_image)) # index of image Nimg+1
+            indexes = self.indexes[i1:(i2+1)] # indexes of image 1 through image Nimg - note, this does not have to have length of batch_size
 
-        # Generate data
-        X, y = self.__data_generation(list_IDs_temp, subIndices, indexes)
+            list_IDs_temp = [self.list_IDs[k] for k in indexes] # list of image paths
+            subIndices = {} #
+            counter=0
+            for k in indexes:
+                img_index = i1+counter
+                si1 = max(0,batch_index*self.batch_size-img_index*self.patches_per_image)
+                si2 = min(self.patches_per_image,(batch_index+1)*self.batch_size-img_index*self.patches_per_image)
+                subIndices[self.list_IDs[k]] = self.subIndices[np.arange(si1,si2,dtype=np.int16)]
+                counter+=1
+
+            # Generate data
+            X, y = self.__data_generation(list_IDs_temp, subIndices, indexes)
+        if self.dim[3]==4:
+            X = X[:,:,:,:,[0,2,3,4]]
         return X, y
 
     'Optionally shuffle batch and patch order after each epoch'
@@ -156,14 +179,19 @@ class DataGenerator(BaseDataGenerator):
             y - batch_size x Nvesssel x 8 array of plane location information """
     def __data_generation(self, list_IDs_temp, subIndices, indexes):
         # Initialization
-        XX = np.empty((self.batch_size, *self.dim))
-        yy = np.empty((self.batch_size, *self.label_dim))
+        if self.balanced:
+            sz = self.patches_per_image
+        else:
+            sz = self.batch_size
+        (dimX,dimY,dimZ,_) = self.dim
+        XX = np.empty((int(sz), dimX, dimY, dimZ, 5))
+        yy = np.empty((int(sz), *self.label_dim))
 
         counter = 0
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
-            y = self.labels[ID]
-            X = self.images[indexes[i],]
+            y = self.labels[ID] # ID is file path
+            X = self.images[indexes[i],] # i is a number
             X, y =  self.data_augmenter(X, y)
             for ii, ind in enumerate(subIndices[ID]):
                 x1 = self.xInd.ravel()[ind]*self.stride[0]

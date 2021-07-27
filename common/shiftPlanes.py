@@ -3,7 +3,7 @@ import os
 import csv
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from common.utils import readPlaneLocations, readCase
+from utils import readPlaneLocations, readCase
 from skimage.filters import threshold_mean
 from skimage.morphology import skeletonize
 import matplotlib.pyplot as plt
@@ -94,8 +94,8 @@ def shiftPlanes(name, label):
     # return newLabel
 
 if __name__ == '__main__':
-    fileName = './TestResults/OneShot_Predictions.csv'
-    with open('./TestResults/Shifted_Predictions.csv', mode='w') as csvFile:
+    fileName = './TestResults/OneShot_Predictions_weighted_average.csv'
+    with open('./TestResults/Weighted_Shifted_Predictions.csv', mode='w') as csvFile:
         writer = csv.writer(csvFile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         row = ['Path', 'Vessel', 'Center_X', 'Center_Y', 'Center_Z', 'Normal_X', 'Normal_Y', 'Normal_Z']
         print(row)

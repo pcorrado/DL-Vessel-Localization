@@ -21,7 +21,7 @@ class MyModel():
     def compile(self, optimizer=tf.keras.optimizers.Adam(1e-3), loss=None):
         self.model.compile(optimizer=optimizer, loss=loss, metrics=[ppv, npv, dist, side, angle])
 
-    def fit(self, x, epochs=100, callbacks=None):
+    def fit(self, x, epochs=200, callbacks=None):
         self.model.fit(x=x, epochs=epochs, callbacks=callbacks) #tf.keras.callbacks.TensorBoard(log_dir=self.log_dir)
 
     def summary(self,line_length=120):
@@ -105,7 +105,7 @@ class MyModel():
         return Model(inputs=input, outputs=outputs)
 
     @staticmethod
-    def predictFullImages(model, dataGenerator):
+    def predictFullImages(model, dataGenerator, weightedAverage=False):
         """ Predicts plane location IN IMAGE COORDINATES for all images in the data generator.
             This can be used during validation or during testing.
             Outputs:
@@ -130,22 +130,55 @@ class MyModel():
                 for vessel in range(y.shape[1]):
                     name, xImg, yImg, zImg = dataGenerator.getImgNameXYZ(batch_index,patch_index,y2[patch_index,vessel,1],y2[patch_index,vessel,2],y2[patch_index,vessel,3])
                     if name != oldName:
+                        print(name)
                         # print('Took {} seconds to process {}.'.format(time.time()-t,oldName))
                         oldName=name
                         t = time.time()
                     if not name in maxLikelihood.keys():
-                        maxLikelihood[name] = [0 for v in range(y.shape[1])]
-                        maxLocPredicted[name] = [[] for v in range(y.shape[1])]
-                    if (not maxLikelihood[name][vessel]) or (y2[patch_index,vessel,0] > maxLikelihood[name][vessel]):
-                        maxLikelihood[name][vessel] = y2[patch_index,vessel,0]
-                        maxLocPredicted[name][vessel] = [xImg, yImg, zImg, y2[patch_index,vessel,4]*max(dataGenerator.imageDims), \
-                                                y2[patch_index,vessel,5]*2.0-1.0, y2[patch_index,vessel,6]*2.0-1.0, y2[patch_index,vessel,7]*2.0-1.0]
+                        maxLikelihood[name] = [[0,0,0] for v in range(y.shape[1])]
+                        maxLocPredicted[name] = [[[],[],[]] for v in range(y.shape[1])]
+                    if (not maxLikelihood[name][vessel]) or (y2[patch_index,vessel,0] > maxLikelihood[name][vessel][2]):
+                        index=2
+                        if y2[patch_index,vessel,0] > maxLikelihood[name][vessel][1]:
+                            if y2[patch_index,vessel,0] > maxLikelihood[name][vessel][0]:
+                                index=0
+                            else:
+                                index=1
+                        maxLikelihood[name][vessel].insert(index,y2[patch_index,vessel,0])
+                        maxLocPredicted[name][vessel].insert(index,[xImg, yImg, zImg, y2[patch_index,vessel,4]*max(dataGenerator.imageDims), \
+                                                y2[patch_index,vessel,5]*2.0-1.0, y2[patch_index,vessel,6]*2.0-1.0, y2[patch_index,vessel,7]*2.0-1.0])
+                        maxLikelihood[name][vessel].pop(3)
+                        maxLocPredicted[name][vessel].pop(3)
+                        # if vessel==0:
+                        #     print(np.array(maxLocPredicted[name][0][0],dtype=int))
                     name, xImg, yImg, zImg = dataGenerator.getImgNameXYZ(batch_index,patch_index,y[patch_index,vessel,1],y[patch_index,vessel,2],y[patch_index,vessel,3])
                     if not name in maxLocTrue.keys():
                         maxLocTrue[name] = [[0,0,0,0,0,0,0] for v in range(y.shape[1])]
                     if y[patch_index,vessel,0]:
                         maxLocTrue[name][vessel] = [xImg, yImg, zImg, y[patch_index,vessel,4]*max(dataGenerator.imageDims), \
                                                     y[patch_index,vessel,5]*2.0-1.0, y[patch_index,vessel,6]*2.0-1.0, y[patch_index,vessel,7]*2.0-1.0]
+
+        for name in maxLikelihood.keys():
+            for vessel in range(len(maxLikelihood[name])):
+                if weightedAverage:
+                    totalProb = maxLikelihood[name][vessel][0] + maxLikelihood[name][vessel][1] + maxLikelihood[name][vessel][2]
+                    print(name)
+                    # print(totalProb)
+                    a = float(maxLikelihood[name][vessel][0])/totalProb
+                    b = float(maxLikelihood[name][vessel][1])/totalProb
+                    c = float(maxLikelihood[name][vessel][2])/totalProb
+                    # print(a)
+                    # print(b)
+                    # print(c)
+                    print(maxLocPredicted[name][vessel][0])
+                    print(maxLocPredicted[name][vessel][1])
+                    print(maxLocPredicted[name][vessel][2])
+                    maxLocPredicted[name][vessel] = a*np.array(maxLocPredicted[name][vessel][0], dtype=float) + \
+                                                    b*np.array(maxLocPredicted[name][vessel][1], dtype=float) + \
+                                                    c*np.array(maxLocPredicted[name][vessel][2], dtype=float)
+                    print(maxLocPredicted[name][vessel])
+                else:
+                    maxLocPredicted[name][vessel] = maxLocPredicted[name][vessel][0]
         return maxLocPredicted, maxLocTrue
 
     @staticmethod
@@ -247,10 +280,11 @@ class MyCallBack(tf.keras.callbacks.Callback):
         tf.keras.backend.set_value(self.model.optimizer.lr, lr*0.94)
         print("\nEpoch %05d: Learning rate was %6.4f, now it's %6.4f." % (epoch, lr, lr*0.94))
 
-        # maxLocPredicted, maxLocTrue = MyModel.predictFullImages(self.model, self.validation_data)
-        # dist, side, angle = MyModel.comparePlaneLocations(maxLocPredicted, maxLocTrue)
-        # for vessel in range(dist.shape[0]):
-        #     print('Vessel #{}: distance={}, side={}, angle={}\n'.format(vessel,np.mean(dist[vessel,:]),np.mean(side[vessel,:]),np.mean(angle[vessel,:])))
+        if self.validation_data is not None:
+            maxLocPredicted, maxLocTrue = MyModel.predictFullImages(self.model, self.validation_data)
+            dist, side, angle = MyModel.comparePlaneLocations(maxLocPredicted, maxLocTrue)
+            for vessel in range(dist.shape[0]):
+                print('Vessel #{}: distance={}, side={}, angle={}\n'.format(vessel,np.mean(dist[vessel,:]),np.mean(side[vessel,:]),np.mean(angle[vessel,:])))
 
 def _bn_relu(input):
     """Helper to build a BN -> relu block."""

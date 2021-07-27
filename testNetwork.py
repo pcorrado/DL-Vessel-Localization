@@ -8,9 +8,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from common.utils import readPlaneLocations
 import OneShotCNN.Model as oneShotModel
-import ReinforcementCNN.Model as reinforcementModel
 import OneShotCNN.DataGenerator as oneShotGenerator
-import ReinforcementCNN.DataGenerator as reinforcementGenerator
 
 """ testNetwork - test the CNN for Deep Learning Based 4D Flow Plane Placement
         usage:
@@ -18,8 +16,8 @@ import ReinforcementCNN.DataGenerator as reinforcementGenerator
 """
 if __name__ == '__main__':
 
-    modelName = "TrainedModel/ResNet_32_stride_16_62mil_batch_64"
-    outputFile = "TestResults/OneShot_Predictions.csv"
+    modelName = "TrainedModel/TrainedModel_5Channels_Balanced/"
+    outputFile = "TestResults/Balanced_Predictions.csv"
 
     # Load model
     myModel = oneShotModel.MyModel()
@@ -31,10 +29,10 @@ if __name__ == '__main__':
     images = np.array(images)
 
     # Data generator
-    test_generator = oneShotGenerator.DataGenerator(images, labels, shuffle=False)
+    test_generator = oneShotGenerator.DataGenerator(images, labels, shuffle=False, balanced=False)
 
     # Run predictions on test images
-    predictedLocations, trueLocations = oneShotModel.MyModel.predictFullImages(myModel.model, test_generator)
+    predictedLocations, trueLocations = oneShotModel.MyModel.predictFullImages(myModel.model, test_generator, weightedAverage=False)
     dist, side, angle = oneShotModel.MyModel.comparePlaneLocations(predictedLocations, trueLocations)
     for vessel in range(dist.shape[0]):
         print('Vessel #{}: distance={}, side={}, angle={}\n'.format(vessel,np.mean(dist[vessel,:]),np.mean(side[vessel,:]),np.mean(angle[vessel,:])))
